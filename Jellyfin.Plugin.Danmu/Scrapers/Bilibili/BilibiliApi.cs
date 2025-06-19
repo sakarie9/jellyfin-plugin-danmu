@@ -19,6 +19,7 @@ namespace Jellyfin.Plugin.Danmu.Scrapers.Bilibili;
 
 public class BilibiliApi : AbstractApi
 {
+    private const string HTTP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:139.0) Gecko/20100101 Firefox/139.0";
     private static readonly object _lock = new object();
     private TimeLimiter _timeConstraint = TimeLimiter.GetFromMaxCountByInterval(1, TimeSpan.FromMilliseconds(1000));
     private TimeLimiter _delayExecuteConstraint = TimeLimiter.GetFromMaxCountByInterval(1, TimeSpan.FromMilliseconds(100));
@@ -33,6 +34,7 @@ public class BilibiliApi : AbstractApi
         : base(loggerFactory.CreateLogger<BilibiliApi>())
     {
         httpClient.DefaultRequestHeaders.Add("Referer", "https://www.bilibili.com/");
+        httpClient.DefaultRequestHeaders.Add("user-agent", HTTP_USER_AGENT);
     }
 
 
@@ -151,19 +153,25 @@ public class BilibiliApi : AbstractApi
         }
 
         var url = $"https://api.bilibili.com/x/v1/dm/list.so?oid={cid}";
+        this._logger.LogInformation($"[Debug] 请求 URL: {url}");
+        this._logger.LogInformation("[Debug] headers: {0}", httpClient.DefaultRequestHeaders.ToString());
         var response = await this.httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+        this._logger.LogInformation($"[Debug] 响应状态码: {response.StatusCode}");
         if (!response.IsSuccessStatusCode)
         {
+            this._logger.LogInformation($"[Debug] 请求失败，状态码: {response.StatusCode}");
             throw new Exception($"Request fail. url={url} status_code={response.StatusCode}");
         }
 
         // 数据太小可能是已经被b站下架，返回了出错信息
         var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        this._logger.LogInformation($"[Debug] 获取到的字节数: {(bytes == null ? 0 : bytes.Length)}");
         if (bytes == null || bytes.Length < 2000)
         {
+            this._logger.LogInformation("[Debug] 数据太小，可能已下架或弹幕太少");
             throw new Exception($"弹幕获取失败，可能视频已下架或弹幕太少. url: {url}");
         }
-
+        this._logger.LogInformation($"[Debug] {cid} 弹幕获取成功");
         return bytes;
     }
 
